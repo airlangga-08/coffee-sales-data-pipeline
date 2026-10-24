@@ -1,239 +1,152 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/XwS47GYo)
-# Milestones 3
+# Automated Coffee Sales ETL Pipeline
 
-_Milestones 3 ini dibuat guna mengevaluasi pembelajaran pada Hacktiv8 Comprehensive Data Analytics Program khususnya pada Phase 2._
+An end-to-end, automated ETL pipeline that extracts raw coffee sales data, validates and cleans it with **PySpark**, and loads it into **MongoDB Atlas**, orchestrated by **Apache Airflow**. Data quality is enforced with **Great Expectations**.
 
----
-## Assignment Objectives
-
-Milestone 3 ini dibuat dengan tujuan sebagai berikut:
-
-- Mampu menggunakan Apache Airflow.
-
-- Mampu melakukan validasi data dengan menggunakan Great Expectations.
-
-- Mampu mempersiapkan data untuk digunakan sebelum masuk ke database NoSQL.
-
-- Mampu mengolah data menggunakan library PySpark.
----
-
-## Assignment Problems
-
-Sebagai Data Engineer, kamu diminta untuk membuat data pipeline automation.
+![Airflow DAG](P2M3_raka_airlangga_DAG_graph.jpg.png)
 
 ---
+
+## Table of Contents
+1. [Project Overview](#project-overview)
+2. [Architecture](#architecture)
+3. [Tech Stack](#tech-stack)
+4. [Dataset](#dataset)
+5. [Pipeline Steps](#pipeline-steps)
+6. [Data Validation](#data-validation)
+7. [Orchestration](#orchestration)
+8. [Results](#results)
+9. [Repository Structure](#repository-structure)
+10. [How to Run](#how-to-run)
+11. [Key Takeaways](#key-takeaways)
+12. [Author](#author)
+
+---
+
+## Project Overview
+
+**Problem:** Raw sales data is often messy (inconsistent column names, missing values, wrong data types) and processing it by hand is slow and error-prone.
+
+**Solution:** A scheduled pipeline that automatically ingests the raw CSV, cleans and standardizes it, validates quality, and stores analysis-ready documents in a NoSQL database.
+
+**Outcome:** Replaced manual data preparation with a fully automated, scheduled pipeline that cleans coffee sales data, passes all 7 data quality checks, and stores analysis-ready records in MongoDB Atlas.
+
+## Architecture
+
+```
+coffe_sales_raw.csv
+        │
+        ▼
+ ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+ │  Extract    │ ──▶ │  Transform  │ ──▶ │    Load     │
+ │ (PySpark)   │     │ (PySpark)   │     │ (PyMongo)   │
+ └─────────────┘     └─────────────┘     └─────────────┘
+        │                                       │
+        └──── Orchestrated by Apache Airflow ───┘
+                                                ▼
+                                        MongoDB Atlas
+```
+
+## Tech Stack
+
+| Layer | Tool |
+|---|---|
+| Language | Python |
+| Processing | PySpark |
+| Orchestration | Apache Airflow |
+| Containerization | Docker / Docker Compose (runs Airflow and the Spark jobs) |
+| Data Validation | Great Expectations |
+| Database | MongoDB Atlas (PyMongo) |
+| Exploration | Jupyter Notebook, Pandas |
+
 ## Dataset
 
-### Ketentuan Dataset
-1. Pilihlah dataset yang paling nyaman digunakan dalam mengerjakan Milestone 3. Adapun ketentuan dataset yang harus digunakan adalah :
-   * Setidaknya terdapat minimal 10 column.
-   * Setiap column terdiri dari :
-     + Capital letter dan lower letter atau semua huruf merupakan capital letter.
-     + Contoh : `Age`, `fullName`, `CITY`, `Education Level`.
-   * Tidak diperbolehkan memilih dataset dimana nama column terdiri dari lower letter saja.
-   * Terdapat campuran column berbentuk kategorikal dan numerikal. Sebisa mungkin jumlah kolom kategorikal dan numerikal seimbang, tidak ada yang terlalu mendominasi.
+- **Name:** Coffee Sales
+- **Source:** https://www.kaggle.com/datasets/rifatalam3/coffee-revenue-dataset
+- **Size:** 3548 rows × 11 columns
+- **Key columns:** date, money, cash_type, coffee_name
 
-2. **Konsultasikan terlebih dahulu dataset yang hendak digunakan ke instruktur Phase. Jika disetujui, maka silakan dikerjakan. Jika tidak disetujui, maka cari dataset yang lain dan konsultasikan lagi mengenai dataset yang baru ini.**
+## Pipeline Steps
 
-3. Student tidak boleh menggunakan dataset yang sudah dipakai dalam sesi pembelajaran saat dikelas bersama instruktur atau dataset pada tugas-tugas terdahulu dari Phase 0 hingga Phase 2.
+| Step | File | Description |
+|---|---|---|
+| Extract | `extract.py` | Reads the raw CSV into a Spark DataFrame |
+| Transform | `transform.py` | Renames columns to a consistent snake_case style (e.g. `cash_type` → `payment_type`, `money` → `total_price`), trims fractional seconds from `time_details` (format `HH:mm:ss`), casts `date` to a proper date type (`yyyy-MM-dd`), and removes duplicate rows |
+| Load | `load.py` | Converts `date` to a string (Spark timestamps are not directly storable in MongoDB), converts each row to a document, and inserts them into the `coffee_sales` collection in the `coffee_sales_db` database via PyMongo |
 
-4. **Student dilarang untuk melakukan scraping dataset** karena dikhawatirkan proses pembuatan scraper dan proses scraping akan memakan waktu. Gunakan public dataset yang tersedia diberbagai macam situs Internet.
+## Data Validation
 
-5. Anda dapat membayangkan bahwa Anda saat ini bekerja sebagai seorang Data Engineer disebuah perusahaan. Carilah dataset yang sekiranya merepresentasikan domain sebuah perusahaan seperti data mengenai : 
-   - Product inventory.
-   - Revenue & profit.
-   - Kinerja pegawai.
-   - Customer profile.
-   - Keluhan produk/jasa.
-   - dll.
+Before building the pipeline, the raw data was explored and validated in `P2M3_raka_airlangga_GX.ipynb` using Great Expectations. The findings from this step defined the cleaning rules implemented in `transform.py`. The notebook is a development step and is not a task inside the DAG. All **7 expectations pass**:
 
-### Data Sources
-Student dapat memilih dataset dari salah satu repository dibawah ini. Popular open data repositories :
+- hour_of_day: Validate that the minimum value is 6 and the maximum value is 22.
+- payment_type: Validate that the column contains only one unique value, card.
+- coffee_name: Validate that the column contains no null values.
+- total_price: Validate that all values are greater than 0.
+- date: Validate that all values contain valid date values.
+- sales_id: Validate that all values are unique.
+- id: Validate that the id column is included in the fact_sales DataFrame.
 
-- [UC Irvine Machine Learning Repository](https://archive.ics.uci.edu/ml/index.php)
-- [Kaggle datasets](https://www.kaggle.com/datasets)
-- [Amazon’s AWS datasets](https://registry.opendata.aws/)
+## Orchestration
 
-Meta portals :
+The Airflow DAG (`P2M3_raka_airlangga_DAG.py.py`) chains three tasks: **Extract → Transform → Load**.
 
-- [Data Portals](http://dataportals.org/)
-- [OpenDataMonitor](https://opendatamonitor.eu/frontend/web/index.php?r=dashboard%2Findex)
-- [Quandl](https://www.quandl.com/)
-- Sumber lain yang kredibel.
+- **Schedule:** every Saturday, 09:10–09:30 AM, every 10 minutes
+- **Start date:** 1 November 2024
 
----
+## Results
 
-## Assignment Instructions
-Buatlah sistem automasi data pipeline (ETL) dengan mengkombinasikan penggunaan PySpark, Airflow, dan MongoDB.
+**Successful DAG run**
 
-### A. Pra Automasi
-1. Tentukan dataset yang hendak dipakai. Beri nama dataset ini dengan `P2M3_<nama-student>_data_raw.csv`. Contoh : `P2M3_raka_ardhi_data_raw.csv`.
-2. Sebelum membuat sistem automasi, kamu perlu melakukan eksplorasi data dan validasi data di **notebook (.ipynb)**.
-3. Pada tahapan ini, kamu boleh menggunakan Pandas (**NOTE:** perlu diperhatikan bahwa jika ukuran data cukup besar, penggunaan Pandas tidak lagi efisien dan perlu menggunakan PySpark, namun untuk kasus ini kamu bisa ambil sampel data saja).
-4. Lakukan eksplorasi data sederhana untuk mengetahui kondisi data dan kesimpulan yang ingin didapatkan adalah langkah-langkah data cleaning dan processing yang nantinya akan dikembangkan di data pipeline.
-5. Selanjutnya lakukan validasi data menggunakan Great Expectations. Adapun kriteria mengenai Expectation yang dipilih adalah :
-   - Lakukan minimal 7 Expectations yang didalamnya harus ada Expectation untuk:
-     + to be unique
-     + to be between min_value and max_value
-     + to be in set
-     + to be in type list
-     + 3 jenis Expectation yang berbeda yang tidak diajarkan pada lecture Data Ethics & Data Validation
-   - Kamu diwajibkan untuk menerapkan 4 Expectation yang telah ditentukan dan 3 Expectation lain yang tidak diajarkan pada lecture dimana semua Expectation ini berbeda satu sama lain.
-   - Ketujuh Expectation yang digunakan haruslah semuanya bernilai `success: true`.
-   - Untuk Expectation `to be unique`, Kamu diizinkan untuk membuat sebuah column baru jika dirasa column yang ada didataset tidak ada yang unik. Column baru ini haruslah berasal dari column yang sudah ada. Kamu dapat membuat gabungan antara beberapa column yang sudah ada untuk column baru ini. Buatlah skenario fiksi mengenai kegunaan dari column ini sehingga jelas peruntukannya.
-   - Setiap Expectation hanya boleh berada pada 1 cell yang berbeda-beda sehingga dapat dilihat mengenai hasilnya.
-   - Simpan Python Notebook dengan nama `P2M3_<nama-student>.ipynb`. Contoh : `P2M3_raka_ardhi.ipynb`.
-  
-### B. Automasi Data Pipeline
-Buat proses extract, transform, dan load dalam file python script yang terpisah.
-#### 1. Extract
-- Buat file `extract.py` untuk membaca data saja.
-- Gunakan  PySpark untuk membaca data.
-- Buat script load data dalam bentuk function untuk memudahkan dan outpunya berupa Spark Dataframe yang nantinya akan dibaca oleh file transform.py
-- Contoh:
-  ```python
-  from pyspark.sql import SparkSession
-  def load_data(file_path):
-      spark = SparkSession.builder.getOrCreate()
-      data = spark.read.csv(file_path, header=True, inferSchema=True)
-      return data```
+![DAG graph](P2M3_raka_airlangga_DAG_graph.jpg.png)
 
-#### 2. Transform
-- Buat file `transform.py` untuk memproses data yang telah diekstraksi.
-- Tahapan data cleaning dan processing hanya dilakukan dengan PySpark dan tahapannya sesuai dengan kesimpulan yang didapatkan dari eksplorasi data yang sudah dilakukan di notebook.
-- Pastikan hasil transformasi data siap digunakan untuk proses selanjutnya.
-- Contoh:
-  ```python
-  def transform(data):
-    data_dropped = data.drop("col1")
-    return data_dropped
-  ```
+**Data stored in MongoDB Atlas**
 
-#### 3. Load
-- Buat file `load.py` untuk menyimpan data ke database Mongodb
-- Buat koneksi ke database Mongodb dengan pymongo
-- Simpan Pyspark dataframe ke database Mongodb
-- Cek di Mongodb atlas apakah database sudah tersimpan dan screenshot. Push screenshotnya ke repository dengan nama file `P2M3_<nama-student>_screenshot_mongo.jpg`. Contoh: `P2M3_raka_ardhi_screenshot_mongo.jpg`
+![MongoDB](P2M3_raka_airlangga_screenshot_mongo.png)
 
-
-### Workflow Orchestration
-Lakukan automasi dengan membuat DAG dengan kriteria :
-   - DAG berisi 3 node/task dibawah ini :
-     + `Extract` : berisi script untuk menjalankan file extract.py dan fungsi di dalamnya yang bertujuan untuk load data.
-     + `Transform` : berisi script untuk menjalankan file transform.py dan fungsi di dalamnya yang bertujuan untuk transformasi data.
-     + `Load` : berisi script untuk menjalankan file load.py dan fungsi di dalamnya yang bertujuan untuk menyimpan data ke database MongoDB.
-   - Penjadwalan dimulai pada tanggal 01 November 2024.
-   - Penjadwalan dilakukan setiap hari Sabtu jam 09:10 AM hingga 09:30 AM dan dilakukan per 10 menit. Tabel dibawah ini adalah contoh hasil penjadwalannya :
-     | No | Execution Time |
-     | --- | --- |
-     | 1 | Saturday, 2 November 2024 09:10 AM |
-     | 2 | Saturday, 2 November 2024 09:20 AM |
-     | 3 | Saturday, 2 November 2024 09:30 AM |
-     | 4 | Saturday, 9 November 2024 09:10 AM |
-     | 5 | Saturday, 9 November 2024 09:20 AM |
-     | 6 | Saturday, 9 November 2024 09:30 AM |
-     | 7 | Saturday, 16 November 2024 09:10 AM |
-     | 8 | Saturday, 16 November 2024 09:20 AM |
-     | 9 | ... |
-   - Simpan DAG dengan nama `P2M3_raka_ardhi_DAG.py`.
-   - Jalankan penjadwalan yang Anda buat. Lalu, screenshot mengenai graph DAG yang telah Anda jalankan dengan nama `P2M3_raka_ardhi_DAG_graph.jpg`. *([Ilustrasi graph DAG](https://i.sstatic.net/KgUwc.png))*
-
-### C. Ketentuan Lain
-1. Pada file Python, **wajib** memberikan keterangan atau pengenalan dengan menggunakan `comment` atau `docstring` yang berisikan : Judul tugas, Nama, Batch, dan penjelasan singkat tentang program yang dibuat, fitur-fitur. Contoh:
-    ```py
-    '''
-    =================================================
-    Milestone 3
-
-    Nama  : Raka Ardhi
-    Batch : CODA-001-RMT
-
-    Program ini dibuat untuk melakukan automatisasi transform dan load data dari PostgreSQL ke ElasticSearch. Adapun dataset yang dipakai adalah dataset mengenai penjualan mobil di Indonesia selama tahun 2020.
-    =================================================
-    '''
-    ```
-
-2. Kamu diwajibkan menggunakan class/function untuk memisahkan bagian code agar flow dari code yang dibuat mudah diikuti. Berikan penjelasan pada setiap class/function yang dibuat dengan menggunakan docstring seperti : 
-   ```py
-   def get_data_from_postgresql(url, database, table):
-     '''
-     Fungsi ini ditujukan untuk mengambil data dari PostgreSQL untuk selanjutnya dilakukan Data Cleaning.
-
-     Parameters:
-      url: string - lokasi PostgreSQL
-      database: string - nama database dimana data disimpan
-      table: string - nama table dimana data disimpan
-
-     Return
-      data: list of str - daftar data yang ada di database
-        
-     Contoh penggunaan:
-     data = get_data_from_postgresql('localhost', 'db_phase2', 'table_m3')
-     '''
-
-     return data
-
-   ```
-
----
-
-## Assignment Submission
-
-- Push Assignment yang telah Anda buat ke akun GitHub Classroom Anda masing-masing.
-- Contoh bentuk repository :
-  ```
-  P2-M3/raka-ardhi
-  |
-  ├── P2M3_raka_ardhi_data_raw.csv
-  ├── P2M3_raka_ardhi_DAG.py 
-  ├── P2M3_raka_ardhi_DAG_graph.jpg
-  ├── P2M3_raka_ardhi_DAG_graph.py
-  ├── P2M3_raka_ardhi_GX.ipynb 
-  └── README.md
-  ```
-
----
-
-## Assignment Rubrics
-
-### Code Review
-
-| Criteria | Meet Expectations | Points |
-| --- | --- | --- |
-| DAG | DAG yang digunakan dapat dijalankan tanpa error | 12 pts |
-| Great Expectation | Mampu membuat 7 Expectations dengan 0 Error | 2 pts / Expectation |
-| PySpark | Mampu membuat script data cleaning dan transformation dengan PySpark | 6 |
-| Conclusion | Penarikan kesimpulan dari hasil eksplorasi data sederhana berupa langkah-langkah data cleaning dan transformation yang akan dilakukan  | 5 pts |
-| Runs Perfectly | Kode berjalan tanpa ada error. Seluruh kode berfungsi dan dibuat dengan benar. | 5 pts |
-
-### Readability
-
-| Criteria | Meet Expectations | Points |
-| --- | --- | --- |
-| Tertata Dengan Baik | Semua baris kode terdokumentasi dengan baik dengan Markdown untuk penjelasan kode | 8 pts |
+## Repository Structure
 
 ```
-Kriteria tertata dengan baik diantaranya adalah: 
-
-1. Tidak menyalin markdown dari tugas lain.
-2. Import library rapih (terdapat dalam 1 cell dan tidak ada unused libs).
-3. Terdapat komentar pada setiap baris kode.
-4. Adanya pemisah yang jelas antar section, dll.
-5. Tidak adanya typo.
+ETL-Portofolio/
+├── coffe_sales_raw.csv                      # Raw dataset
+├── extract.py                               # Extract step (PySpark)
+├── transform.py                             # Transform step (PySpark)
+├── load.py                                  # Load step (MongoDB)
+├── P2M3_raka_airlangga_DAG.py.py            # Airflow DAG
+├── P2M3_raka_airlangga_GX.ipynb             # EDA + Great Expectations
+├── P2M3_raka_airlangga_DAG_graph.jpg.png    # DAG screenshot
+├── P2M3_raka_airlangga_screenshot_mongo.png # MongoDB screenshot
+└── README.md
 ```
 
----
+## How to Run
 
+```bash
+# 1. Clone the repository
+git clone https://github.com/airlangga-08/ETL-Portofolio.git
+cd ETL-Portofolio
+
+# 2. Set your MongoDB connection string (never commit credentials)
+export MONGO_URI="your-mongodb-atlas-uri"
+
+# 3. Start Airflow with Docker Compose
+docker compose up -d
+
+# 4. Open the Airflow UI at http://localhost:8080,
+#    enable the DAG and trigger it (or wait for the schedule)
 ```
-Total Points : 50
-```
 
----
+The pipeline runs inside Docker containers, so no local Spark or Airflow installation is needed. Data is exchanged between tasks through the mounted folder `/opt/airflow/data` (`sales_extracted` → `sales_transformed`).
 
-## Notes
+> Requirements: Docker and Docker Compose installed.
+## Key Takeaways
 
-* **Deadline : P2W3D2 pukul 23:59 WIB.**
+- Built a modular ETL pipeline with separate extract, transform and load scripts.
+- Automated the workflow end to end with Airflow scheduling.
+- Containerized the environment with Docker so the pipeline is reproducible on any machine.
+- Enforced data quality with 7 Great Expectations checks.
+- Handled real-world integration issues, such as converting Spark date types so they can be stored in MongoDB.
+- **Next improvements:** make the load step idempotent (avoid duplicate inserts on repeated runs) and build an analysis or dashboard on top of the stored data.
 
-* **Keterlambatan pengumpulan tugas mengakibatkan skor Milestone 3 menjadi 0.**
+## Author
 
-* **Presentasi Milestone 2 akan dilaksanakan di P2W3D4, harap siapkan presentasinya.**
+**Raka Airlangga**
+[LinkedIn](www.linkedin.com/in/raka-airlangga) · [Email](raka.airlanggaa@gmail.com)
