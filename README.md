@@ -149,4 +149,4 @@ The pipeline runs inside Docker containers, so no local Spark or Airflow install
 ## Author
 
 **Raka Airlangga**
-[LinkedIn](www.linkedin.com/in/raka-airlangga) · [Email](raka.airlanggaa@gmail.com)
+[LinkedIn](https://www.linkedin.com/in/raka-airlangga/) · [Email](mailto:raka.airlanggaa@gmail.com)
